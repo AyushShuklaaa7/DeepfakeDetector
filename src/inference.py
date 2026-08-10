@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
-from model import load_model
+ 
 
 
 # --------------------------------------------------
