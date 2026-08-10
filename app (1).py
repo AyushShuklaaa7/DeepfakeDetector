@@ -1,22 +1,34 @@
-
+```python
 import os
 import time
+import sys
+
 import torch
-import gradio as gr
-
-from src.model import load_model
-from src.inference import create_yunet, predict_video
+import streamlit as st
 
 
-# ==================================================
+# --------------------------------------------------
 # Project paths
-# ==================================================
+# --------------------------------------------------
 
 PROJECT_DIR = os.path.dirname(
     os.path.dirname(
         os.path.abspath(__file__)
     )
 )
+
+SRC_DIR = os.path.join(
+    PROJECT_DIR,
+    "src"
+)
+
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+
+from model import load_model
+from inference import create_yunet, predict_video
+
 
 MODEL_PATH = os.path.join(
     PROJECT_DIR,
@@ -31,164 +43,273 @@ YUNET_PATH = os.path.join(
 )
 
 
-# ==================================================
-# Device
-# ==================================================
+# --------------------------------------------------
+# Streamlit page configuration
+# --------------------------------------------------
 
-device = torch.device(
-    "cuda" if torch.cuda.is_available()
-    else "cpu"
-)
-
-print("Device:", device)
-
-
-# ==================================================
-# Load EfficientNet-B0
-# ==================================================
-
-print("Loading EfficientNet-B0...")
-
-model, checkpoint = load_model(
-    MODEL_PATH,
-    device
-)
-
-print("EfficientNet loaded!")
-
-print(
-    "Validation accuracy:",
-    f"{checkpoint['val_accuracy'] * 100:.2f}%"
-)
-
-print(
-    "Classes:",
-    checkpoint["class_names"]
+st.set_page_config(
+    page_title="Deepfake Video Detector",
+    page_icon="🕵️",
+    layout="centered"
 )
 
 
-# ==================================================
-# Load YuNet
-# ==================================================
+# --------------------------------------------------
+# Load models
+# --------------------------------------------------
 
-print("Loading YuNet...")
+@st.cache_resource
+def load_detector():
 
-yunet = create_yunet(
-    YUNET_PATH
-)
+    device = torch.device(
+        "cuda"
+        if torch.cuda.is_available()
+        else "cpu"
+    )
 
-print("YuNet loaded!")
+    model, checkpoint = load_model(
+        MODEL_PATH,
+        device
+    )
 
+    yunet = create_yunet(
+        YUNET_PATH
+    )
 
-# ==================================================
-# Deepfake detection function
-# ==================================================
-
-def detect_deepfake(file_path):
-
-    if file_path is None:
-        return (
-            "⚠️ Please upload a video.",
-            "—",
-            "—",
-            "—"
-        )
-
-    start_time = time.time()
-
-    result = predict_video(
-        file_path,
+    return (
         model,
         yunet,
         device,
-        frames_to_sample=5
-    )
-
-    if result is None:
-        return (
-            "❌ Could not detect a face in this video.",
-            "—",
-            "—",
-            "—"
-        )
-
-    fake_probability = result[
-        "fake_probability"
-    ]
-
-    real_probability = result[
-        "real_probability"
-    ]
-
-    prediction = result[
-        "prediction"
-    ]
-
-    frames_used = result[
-        "frames_used"
-    ]
-
-    processing_time = (
-        time.time() - start_time
-    )
-
-    if prediction == "FAKE":
-        prediction_text = "⚠️ FAKE VIDEO"
-    else:
-        prediction_text = "✅ REAL VIDEO"
-
-    return (
-        prediction_text,
-        f"{fake_probability * 100:.2f}%",
-        f"{real_probability * 100:.2f}%",
-        f"{frames_used} frames | "
-        f"{processing_time:.2f} seconds"
+        checkpoint
     )
 
 
-# ==================================================
-# Gradio interface
-# ==================================================
+# --------------------------------------------------
+# Application UI
+# --------------------------------------------------
 
-demo = gr.Interface(
-    fn=detect_deepfake,
+st.title("🕵️ Deepfake Video Detector")
 
-    inputs=gr.File(
-        label="Upload MP4 Video",
-        file_types=[".mp4"]
-    ),
+st.write(
+    """
+Upload a video and the AI will analyze
+sampled facial frames using:
 
-    outputs=[
-        gr.Textbox(
-            label="Prediction"
-        ),
-
-        gr.Textbox(
-            label="Fake Probability"
-        ),
-
-        gr.Textbox(
-            label="Real Probability"
-        ),
-
-        gr.Textbox(
-            label="Analysis Information"
-        )
-    ],
-
-    title="🕵️ Deepfake Video Detector",
-
-    description=(
-        "Upload an MP4 video. The AI will analyze "
-        "sampled facial frames and predict whether "
-        "the video is REAL or FAKE."
-    )
+- **YuNet** for face detection
+- **EfficientNet-B0** for deepfake classification
+- **5 evenly spaced frames** per video
+"""
 )
 
 
-# ==================================================
-# Run application
-# ==================================================
+# --------------------------------------------------
+# Load detector
+# --------------------------------------------------
 
-if __name__ == "__main__":
-    demo.launch()
+try:
+
+    model, yunet, device, checkpoint = (
+        load_detector()
+    )
+
+    st.success("AI model loaded successfully.")
+
+except Exception as e:
+
+    st.error(
+        "Failed to load the detector."
+    )
+
+    st.exception(e)
+
+    st.stop()
+
+
+# --------------------------------------------------
+# Model information
+# --------------------------------------------------
+
+with st.expander("Model Information"):
+
+    st.write(
+        "**Model:** EfficientNet-B0"
+    )
+
+    st.write(
+        "**Face Detector:** YuNet"
+    )
+
+    st.write(
+        "**Classes:** fake, real"
+    )
+
+    st.write(
+        "**Validation Accuracy:** "
+        f"{checkpoint['val_accuracy'] * 100:.2f}%"
+    )
+
+    st.write(
+        "**Device:** "
+        f"{device}"
+    )
+
+
+# --------------------------------------------------
+# Video upload
+# --------------------------------------------------
+
+uploaded_file = st.file_uploader(
+    "Upload an MP4 video",
+    type=["mp4"]
+)
+
+
+# --------------------------------------------------
+# Detection
+# --------------------------------------------------
+
+if uploaded_file is not None:
+
+    st.video(uploaded_file)
+
+    if st.button(
+        "🔍 Analyze Video",
+        type="primary"
+    ):
+
+        # Save uploaded video temporarily
+        temp_video_path = os.path.join(
+            PROJECT_DIR,
+            "temp_uploaded_video.mp4"
+        )
+
+        with open(
+            temp_video_path,
+            "wb"
+        ) as f:
+
+            f.write(
+                uploaded_file.getbuffer()
+            )
+
+        start_time = time.time()
+
+        with st.spinner(
+            "Analyzing video..."
+        ):
+
+            result = predict_video(
+                temp_video_path,
+                model,
+                yunet,
+                device,
+                frames_to_sample=5
+            )
+
+        processing_time = (
+            time.time() - start_time
+        )
+
+        # Remove temporary video
+        try:
+            os.remove(
+                temp_video_path
+            )
+        except OSError:
+            pass
+
+
+        # --------------------------------------------------
+        # No face detected
+        # --------------------------------------------------
+
+        if result is None:
+
+            st.error(
+                "❌ Could not detect a face "
+                "in this video."
+            )
+
+        else:
+
+            fake_probability = (
+                result["fake_probability"]
+            )
+
+            real_probability = (
+                result["real_probability"]
+            )
+
+            prediction = (
+                result["prediction"]
+            )
+
+            frames_used = (
+                result["frames_used"]
+            )
+
+
+            # --------------------------------------------------
+            # Result
+            # --------------------------------------------------
+
+            st.subheader(
+                "Detection Result"
+            )
+
+            if prediction == "FAKE":
+
+                st.error(
+                    "⚠️ FAKE VIDEO"
+                )
+
+            else:
+
+                st.success(
+                    "✅ REAL VIDEO"
+                )
+
+
+            # --------------------------------------------------
+            # Probabilities
+            # --------------------------------------------------
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                st.metric(
+                    "Fake Probability",
+                    f"{fake_probability * 100:.2f}%"
+                )
+
+            with col2:
+
+                st.metric(
+                    "Real Probability",
+                    f"{real_probability * 100:.2f}%"
+                )
+
+
+            # --------------------------------------------------
+            # Analysis information
+            # --------------------------------------------------
+
+            st.info(
+                f"Frames analyzed: {frames_used}\n\n"
+                f"Processing time: "
+                f"{processing_time:.2f} seconds"
+            )
+
+
+# --------------------------------------------------
+# Footer
+# --------------------------------------------------
+
+st.markdown("---")
+
+st.caption(
+    "Deepfake Video Detector | "
+    "YuNet + EfficientNet-B0"
+)
+```
