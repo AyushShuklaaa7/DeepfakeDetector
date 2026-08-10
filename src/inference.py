@@ -1,4 +1,4 @@
-import os
+```python
 import cv2
 import numpy as np
 import torch
@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
-from model import create_model
+from model import load_model
 
 
 # --------------------------------------------------
@@ -15,9 +15,13 @@ from model import create_model
 
 FRAMES_TO_SAMPLE = 5
 
-CLASS_NAMES = ["fake", "real"]
 
-# Image preprocessing used during testing
+# --------------------------------------------------
+# Test preprocessing
+# --------------------------------------------------
+# This is the exact preprocessing used during
+# testing in the original Colab notebook.
+
 test_transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -34,7 +38,7 @@ test_transform = transforms.Compose([
 
 def create_yunet(model_path):
     """
-    Load the YuNet face detector.
+    Create the YuNet face detector.
     """
 
     yunet = cv2.FaceDetectorYN.create(
@@ -50,39 +54,6 @@ def create_yunet(model_path):
 
 
 # --------------------------------------------------
-# Load Deepfake Model
-# --------------------------------------------------
-
-def load_deepfake_model(model_path, device):
-    """
-    Load the trained EfficientNet-B0 deepfake model.
-    """
-
-    model = create_model(num_classes=2)
-
-    checkpoint = torch.load(
-        model_path,
-        map_location=device
-    )
-
-    # Your saved model is a checkpoint dictionary
-    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-
-        model.load_state_dict(
-            checkpoint["model_state_dict"]
-        )
-
-    else:
-        # Fallback for a plain state_dict
-        model.load_state_dict(checkpoint)
-
-    model = model.to(device)
-    model.eval()
-
-    return model
-
-
-# --------------------------------------------------
 # Predict Video
 # --------------------------------------------------
 
@@ -94,14 +65,14 @@ def predict_video(
     frames_to_sample=FRAMES_TO_SAMPLE
 ):
     """
-    Analyze a video using YuNet + EfficientNet-B0.
+    Analyze a video using YuNet and EfficientNet-B0.
 
     Five evenly spaced frames are sampled.
-    The largest detected face from each frame
-    is classified as FAKE or REAL.
+    The largest face in each frame is extracted
+    and classified as FAKE or REAL.
 
-    The final prediction is based on the
-    average fake probability.
+    The final prediction is based on the average
+    fake probability across the detected faces.
     """
 
     cap = cv2.VideoCapture(video_path)
@@ -139,7 +110,7 @@ def predict_video(
 
         height, width = frame.shape[:2]
 
-        # Configure YuNet for current frame size
+        # Configure YuNet for the current frame
         yunet.setInputSize(
             (width, height)
         )
@@ -149,7 +120,7 @@ def predict_video(
         if faces is None:
             continue
 
-        # Select largest detected face
+        # Select the largest detected face
         largest_face = max(
             faces,
             key=lambda f: f[2] * f[3]
@@ -183,39 +154,37 @@ def predict_video(
         if face.size == 0:
             continue
 
-        # OpenCV BGR → RGB
+        # OpenCV uses BGR.
+        # Convert to RGB before PIL preprocessing.
         face = cv2.cvtColor(
             face,
             cv2.COLOR_BGR2RGB
         )
 
-        # NumPy → PIL
+        # Convert NumPy array to PIL image
         face = Image.fromarray(face)
 
         # Apply the exact test preprocessing
         face_tensor = test_transform(face)
 
-        # Add batch dimension and move to device
-        face_tensor = (
-            face_tensor
-            .unsqueeze(0)
-            .to(device)
-        )
+        # Add batch dimension
+        face_tensor = face_tensor.unsqueeze(0)
 
-        # EfficientNet prediction
+        # Move tensor to CPU/GPU
+        face_tensor = face_tensor.to(device)
+
+        # Run EfficientNet inference
         with torch.no_grad():
 
-            output = model(
-                face_tensor
-            )
+            output = model(face_tensor)
 
-            probability = torch.softmax(
+            probabilities = torch.softmax(
                 output,
                 dim=1
             )
 
-            # Class 0 = FAKE
-            fake_probability = probability[
+            # Class 0 = fake
+            fake_probability = probabilities[
                 0, 0
             ].item()
 
@@ -225,16 +194,16 @@ def predict_video(
 
     cap.release()
 
-    # No usable faces found
+    # No usable faces were detected
     if len(fake_probabilities) == 0:
         return None
 
-    # Average prediction across frames
+    # Average predictions from all sampled frames
     average_fake_probability = np.mean(
         fake_probabilities
     )
 
-    # Final classification
+    # Final prediction
     prediction = (
         "FAKE"
         if average_fake_probability >= 0.5
@@ -253,3 +222,4 @@ def predict_video(
             fake_probabilities
         )
     }
+```
