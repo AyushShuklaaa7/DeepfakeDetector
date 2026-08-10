@@ -1,4 +1,3 @@
-text
 torch
 torchvision
 opencv-python-headless
