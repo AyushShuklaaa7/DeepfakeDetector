@@ -26,8 +26,9 @@ if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
 
-from model import load_model
-from inference import create_yunet, predict_video
+from src.model import load_model
+from src.inference import create_yunet, predict_video
+
 
 
 MODEL_PATH = os.path.join(
