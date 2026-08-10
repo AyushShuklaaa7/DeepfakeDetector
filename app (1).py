@@ -1,4 +1,4 @@
-```python
+python
 import os
 import time
 import sys
@@ -312,4 +312,4 @@ st.caption(
     "Deepfake Video Detector | "
     "YuNet + EfficientNet-B0"
 )
-```
+
