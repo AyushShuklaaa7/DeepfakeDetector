@@ -1,8 +1,8 @@
+text
 torch
 torchvision
-opencv-python
+opencv-python-headless
 numpy
 Pillow
-scikit-learn
-gradio
 streamlit
+
