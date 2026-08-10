@@ -1,4 +1,4 @@
-```python
+
 import cv2
 import numpy as np
 import torch
@@ -222,4 +222,4 @@ def predict_video(
             fake_probabilities
         )
     }
-```
+
