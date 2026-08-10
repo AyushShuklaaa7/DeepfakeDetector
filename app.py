@@ -31,17 +31,16 @@ from src.inference import create_yunet, predict_video
 
 
 
-MODEL_PATH = os.path.join(
-    PROJECT_DIR,
-    "models",
-    "best_deepfake_model.pth"
-)
+from pathlib import Path
 
-YUNET_PATH = os.path.join(
-    PROJECT_DIR,
-    "models",
-    "yunet.onnx"
-)
+PROJECT_DIR = Path(__file__).resolve().parent
+
+MODEL_PATH = PROJECT_DIR / "models" / "best_deepfake_model.pth"
+YUNET_PATH = PROJECT_DIR / "models" / "yunet.onnx"
+
+print("Project directory:", PROJECT_DIR)
+print("Model path:", MODEL_PATH)
+print("YuNet path:", YUNET_PATH)
 
 
 # --------------------------------------------------
